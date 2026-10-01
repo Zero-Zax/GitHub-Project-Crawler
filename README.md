@@ -44,9 +44,6 @@ After a successful build:
 ```bash
 ./build/github_crawler
 ```
-
-Expected output (Milestone 0):
-
 Expected output (Milestone 1):
 
 ```
