@@ -1,13 +1,20 @@
-cmake_minimum_required(VERSION 3.16)
-project(GitHubProjectCrawler LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.20)
+project(github_crawler LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
+list(APPEND CMAKE_PREFIX_PATH "${CMAKE_SOURCE_DIR}/third_party/install")
 
-# Prefer Clang / Clang++ when available
-if(NOT CMAKE_CXX_COMPILER)
-  set(CMAKE_CXX_COMPILER clang++)
-endif()
+find_package(httplib CONFIG REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
 
-add_executable(github_crawler src/main.cpp)
+add_executable(github_crawler
+    src/main.cpp
+    src/github_client.cpp
+    src/repository_parser.cpp
+    src/repository_store.cpp
+)
+target_compile_features(github_crawler PRIVATE cxx_std_20)
+target_compile_options(github_crawler PRIVATE -Wall -Wextra -Wpedantic)
+target_link_libraries(github_crawler PRIVATE
+    httplib::httplib
+    nlohmann_json::nlohmann_json
+)
