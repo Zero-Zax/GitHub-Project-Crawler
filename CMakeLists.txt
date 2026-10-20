@@ -11,6 +11,9 @@ add_executable(github_crawler
     src/github_client.cpp
     src/repository_parser.cpp
     src/repository_store.cpp
+    src/data_loader.cpp
+    src/repository_analyzer.cpp
+    src/reporter.cpp
 )
 target_compile_features(github_crawler PRIVATE cxx_std_20)
 target_compile_options(github_crawler PRIVATE -Wall -Wextra -Wpedantic)
