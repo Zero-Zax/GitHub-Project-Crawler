@@ -108,38 +108,49 @@ A crawl runs the same steps with GitHubSource and no analyzer. Errors stop the r
 
 ## 3. Test Design
 
-The tests come from the requirements and the public interfaces above. Component tests check one class with fixed input. The end-to-end test checks that CrawlerSystem connects them correctly. Each test names its setup and expected result now; actual results will be recorded in the final milestone.
+Eighteen tests check R1 to R6: eight normal cases (T1–T8) and ten error or edge cases (T9–T18). Each test fixes its input in advance, so its expected result is an exact value, not just "the program runs". The tests use saved files, small hand-built datasets and in-memory test objects, so none of them needs the network. Actual results will be recorded in the final milestone.
 
-### 3.1 Planned Test Cases
+### 3.1 Normal Cases
 
-| Test | Target / setup | Expected result |
+| Test | Target | Input / Setup | Expected Result |
+| --- | --- | --- | --- |
+| T1 | R1 · `parse_repositories` (GitHubSource) | A saved GitHub search response with 3 items. | 3 `Repository` values. Owner comes from `owner.login`, stars from `stargazers_count`, url from `html_url`. |
+| T2 | R2 · JsonExporter | Write 2 known repositories to a temporary file. | A JSON array of 2 objects, each with exactly the nine required fields and the values written. |
+| T3 | R3 · JsonFileSource | Load the saved `repositories.json`. | 100 values; `Repositories loaded: 100` is printed; the first is codecrafters-io/build-your-own-x. |
+| T4 | R4 · filter | Run `analyze --min-stars 100000`, then `analyze --language Python --top 100`. | Every row has at least 100000 stars. The second run shows only `Python` rows: all 25 in the dataset. |
+| T5 | R5 · sort | Run `--sort stars`, `--sort forks` and `--sort updated`, each with `--top 100`. | The sorted column never increases from one row to the next. |
+| T6 | R5 · top N | Run `analyze --top 3`. | Exactly 3 rows: the 3 repositories with the most stars. |
+| T7 | R6 · CsvExporter, JsonExporter | Run `--top 5 --output selected.csv`, then `--top 5 --output selected.json`. | The CSV has a header and 5 rows; the JSON has 5 objects. Both list the same repositories in the same order as the printed table. |
+| T8 | R3–R6 · CrawlerSystem, end to end | A test source holding 4 repositories, a filter that keeps 2, a capturing test sink and a JsonExporter. | The source is loaded once. The test sink and the exported file both receive the same 2 rows in the same order. |
+
+### 3.2 Error and Edge Cases
+
+| Test | Target | Input / Setup | Expected Result |
+| --- | --- | --- | --- |
+| T9 | R1 · `parse_repositories` | A response item whose `description` and `language` are `null`. | Both fields become `""`; no exception. |
+| T10 | R1 · crawl command | A count of `0`, `101` or `abc`; separately, a response body that is invalid JSON or has no `items` array. | Each count is rejected with `count must be between 1 and 100` before any request is sent. The bad body prints `could not read GitHub's response`. Both exit with code 1, and `repositories.json` is left unchanged. |
+| T11 | R3 · JsonFileSource | `--input missing.json`, a path that does not exist. | `cannot open repository dataset` is printed, with exit code 1. No table is printed and no export file is written. |
+| T12 | R3 · JsonFileSource | Three bad files: one holding `{}`, one whose object has no `stars` field, and one holding invalid JSON text. | The first fails with `repository dataset must be a json array`. The other two also fail to load. All three exit with code 1 and write no export file. |
+| T13 | R3, R6 · empty dataset | A file containing `[]`. | `Repositories loaded: 0`, then the table header only and `Selected repositories: 0`. The export file contains `[]`. |
+| T14 | R4 · filter, no matches | `--language python` (lower case), then `--min-stars 10000000`. | Both select 0 rows without an error, since the language match is case-sensitive and no repository has 10 million stars. The export is `[]`. |
+| T15 | R5 · ties | A 4-row dataset where b/x, a/z and a/y tie on stars, forks and update time. Sort by each key, twice. | The tied rows always come out a/y, a/z, b/x, for every key and on both runs. |
+| T16 | R5 · top N boundaries | `--language Rust --top 50` (6 Rust repositories), then `--top 100` (exactly 100 loaded). | All 6 Rust rows with no error, then all 100 rows. |
+| T17 | CLI · option checks | Each separately: `--sort size`, `--top 0`, `--top abc`, `--min-stars -5`, `--top` with no value, `--color red`. | Each prints its own error: `--sort must be stars, forks, or updated`, `--top must be a whole number of at least 1`, `--min-stars must be a whole number`, `needs a value` or `unknown option`. Each exits with code 1 before loading the dataset. |
+| T18 | R6 · CsvExporter | Export 1 repository whose description is `has, comma "q"`. | The CSV field is `"has, comma ""q"""`. A CSV reader finds 9 columns and gets the original description back. |
+
+### 3.3 Coverage of the Requirements
+
+| Requirement | Normal cases | Error / edge cases |
 | --- | --- | --- |
-| T1 — GitHub parsing (R1) | Give `parse_repositories` a saved GitHub search response with 3 items, one with a null description and language. Separately, request a count of 0 and of 101. | 3 `Repository` values with the correct owner, stars and url; the null fields become `""`. Both counts are rejected before any request is sent. |
-| T2 — Save dataset (R2) | Write 2 known repositories through JsonExporter. | The file parses as a JSON array of 2 objects, each with exactly the nine required fields. |
-| T3 — Load dataset (R3) | Load the saved `repositories.json` through JsonFileSource, then load the T2 file. | 100 values, the first being codecrafters-io/build-your-own-x. The T2 file loads back equal to the 2 values written. |
-| T4 — Load errors (R3) | Load a path that does not exist, then a file containing `{}`. | Both throw; the second message says the dataset must be a JSON array. No sink runs. |
-| T5 — Filter (R4) | Analyze with `--min-stars 100000`, then with `--language Python`. | Every row has at least 100000 stars; every row in the second run has language `Python`. |
-| T6 — Sort and ties (R5) | A 4-row dataset where b/x, a/z and a/y tie on stars, forks and update time. Sort by each key. | Each key sorts descending, and the tied rows always come out a/y, a/z, b/x. |
-| T7 — Top N (R5) | Analyze with `--top 3`, then `--language Rust --top 50` (the dataset holds 6 Rust repositories). | Exactly 3 rows, then all 6 Rust rows with no error. |
-| T8 — Export formats (R6) | Export 1 repository whose description contains a comma and a quote, to `.csv` and to `.json`. | The CSV has a 9-column header and the description quoted with the inner quote doubled. The JSON loads back equal. |
-| T9 — End-to-end (R3–R6) | Run CrawlerSystem with an in-memory test source and a capturing test sink, plus a JsonExporter. | One load, one analysis; the captured rows and the exported file contain the same repositories in the same order. |
+| R1 — Collect from GitHub | T1 | T9, T10 |
+| R2 — Save dataset | T2 | T7 (exported JSON reloads) |
+| R3 — Load dataset | T3, T8 | T11, T12, T13 |
+| R4 — Filter | T4, T8 | T14 |
+| R5 — Sort and top N | T5, T6 | T15, T16 |
+| R6 — Report and export | T7, T8 | T13, T14, T18 |
+| Command-line input | — | T17 |
 
-T1 uses a saved response, so it does not depend on the network or the GitHub rate limit. T6 builds its own small dataset because the real data has no exact ties. T9 replaces the real file and terminal with test objects, so the full sequence is checked the same way on any machine.
-
-A failed test points to a component. If T9 shows the right rows printed but a different set exported, the fault is in how CrawlerSystem hands rows to the sinks, not in the analyzer. The final report will record each test's input, expected output and observed output.
-
-### 3.2 Coverage and Evaluation Plan
-
-| Requirement | Supporting tests | Evidence to record in final milestone |
-| --- | --- | --- |
-| R1 — Collect from GitHub | T1 | Parsed fields from the saved response; rejected counts. |
-| R2 — Save dataset | T2, T3 | Field names in the written file; round-trip equality. |
-| R3 — Load dataset | T3, T4, T9 | Loaded count; error messages for bad input. |
-| R4 — Filter | T5 | Smallest star count and the languages present in the output. |
-| R5 — Sort and top N | T6, T7 | Row order for each key and for ties; row counts. |
-| R6 — Report and export | T8, T9 | Exported files compared with the printed rows. |
-
-For each test that runs, the final report will add the actual result and a pass or fail status, and will explain any failure.
+Every requirement has at least one normal case showing it works and one error or edge case showing what happens at its limits. Each component is tested on its own, and T8 checks that CrawlerSystem connects them. If T8 printed the right rows but exported different ones, the fault would be in how CrawlerSystem hands rows to the sinks, not in the analyzer. For each test, the final report will record the actual result and a pass or fail status, and will explain any failure.
 
 ## Optional Bonus — Strategy Pattern for Sort Order
 
